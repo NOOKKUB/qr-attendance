@@ -1166,7 +1166,8 @@ function checkManual() {
    CHECK ATTENDANCE
    ===================================================== */
 
-async function checkAttendance(code) {
+
+    async function checkAttendance(code) {
 
     showCheckResult(
         "กำลังตรวจสอบข้อมูล...",
@@ -1185,7 +1186,8 @@ async function checkAttendance(code) {
     if (studentError) {
 
         showCheckResult(
-            "เกิดข้อผิดพลาดในการค้นหานักเรียน",
+            "เกิดข้อผิดพลาดในการค้นหานักเรียน<br>" +
+            escapeHTML(studentError.message),
             false
         );
 
@@ -1208,7 +1210,9 @@ async function checkAttendance(code) {
         getLocalDate();
 
 
-    /* ตรวจสอบว่าเช็กชื่อวันนี้ไปแล้วหรือยัง */
+    /* =========================================
+       ตรวจสอบว่าเช็กชื่อวันนี้ไปแล้วหรือยัง
+       ========================================= */
 
     const { data: oldData, error: oldError } =
         await supabaseClient
@@ -1222,22 +1226,28 @@ async function checkAttendance(code) {
     if (oldError) {
 
         showCheckResult(
-            "ตรวจสอบข้อมูลไม่สำเร็จ",
+            "ตรวจสอบข้อมูลไม่สำเร็จ<br>" +
+            escapeHTML(oldError.message),
             false
         );
 
         return;
     }
 
+
+    /* ถ้าเช็กชื่อไปแล้ววันนี้ */
 
     if (oldData && oldData.length > 0) {
 
         const old = oldData[0];
 
         showCheckResult(
-            `⚠️ ${student.student_name}<br>
+
+            `⚠️ ${escapeHTML(student.student_name)}<br>
             วันนี้เช็กชื่อแล้ว<br>
-            เวลา ${old.attendance_time}`,
+            เวลา ${escapeHTML(old.attendance_time)}<br>
+            สถานะ: ${escapeHTML(old.status || "มา")}`,
+
             false
         );
 
@@ -1245,9 +1255,55 @@ async function checkAttendance(code) {
     }
 
 
+    /* =========================================
+       คำนวณเวลา
+       ========================================= */
+
     const now =
         new Date();
 
+
+    const hour =
+        now.getHours();
+
+
+    const minute =
+        now.getMinutes();
+
+
+    const currentMinutes =
+        hour * 60 + minute;
+
+
+    let status;
+
+
+    /* =========================================
+       กำหนดสถานะการเข้าแถว
+
+       ก่อน 08:30 = มาก่อนเวลา
+       08:30-08:59 = มา
+       09:00 เป็นต้นไป = สาย
+       ========================================= */
+
+    if (currentMinutes < 8 * 60 + 30) {
+
+        status = "มาก่อนเวลา";
+
+    } else if (currentMinutes < 9 * 60) {
+
+        status = "มา";
+
+    } else {
+
+        status = "สาย";
+
+    }
+
+
+    /* =========================================
+       เวลาปัจจุบัน
+       ========================================= */
 
     const time =
         now.toLocaleTimeString(
@@ -1260,20 +1316,29 @@ async function checkAttendance(code) {
         );
 
 
+    /* =========================================
+       บันทึกข้อมูลลง Supabase
+       ========================================= */
+
     const { error } =
         await supabaseClient
         .from("attendance")
         .insert({
 
-            student_code: student.student_code,
+            student_code:
+                student.student_code,
 
-            student_name: student.student_name,
+            student_name:
+                student.student_name,
 
-            attendance_date: today,
+            attendance_date:
+                today,
 
-            attendance_time: time,
+            attendance_time:
+                time,
 
-            status: "มา"
+            status:
+                status
 
         });
 
@@ -1282,7 +1347,7 @@ async function checkAttendance(code) {
 
         showCheckResult(
             "บันทึกข้อมูลไม่สำเร็จ<br>" +
-            error.message,
+            escapeHTML(error.message),
             false
         );
 
@@ -1290,21 +1355,37 @@ async function checkAttendance(code) {
     }
 
 
-    showCheckResult(
+    /* =========================================
+       แสดงผล
+       ========================================= */
 
-        `✅ เช็กชื่อสำเร็จ<br>
-        <strong>${escapeHTML(student.student_name)}</strong><br>
-        รหัส ${student.student_code}<br>
-        เวลา ${time}`,
-
-        true
-
-    );
+    const statusColor =
+    status === "สาย"
+        ? "red"
+        : "green";
 
 
-    document.getElementById("manualCode").value = "";
+showCheckResult(
 
-}
+    `✅ เช็กชื่อสำเร็จ<br>
+    <strong>${escapeHTML(student.student_name)}</strong><br>
+    รหัส ${escapeHTML(student.student_code)}<br>
+    เวลา ${time}<br>
+    สถานะ:
+    <strong style="color: ${statusColor};">
+        ${status}
+    </strong>`,
+
+    true
+
+);
+
+
+    document
+        .getElementById("manualCode")
+        .value = "";
+
+  }
 
 
 /* =====================================================
